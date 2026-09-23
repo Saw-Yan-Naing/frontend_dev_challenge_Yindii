@@ -17,7 +17,12 @@ class DealDetailsController extends GetxController {
     required this.analytics,
   });
 
-  late final DealModel deal;
+  final _deal = Rxn<DealModel>();
+
+  DealModel? get deal => _deal.value;
+
+  final isLoading = false.obs;
+
   Worker? _cartWorker;
 
   final _quantityLeft = RxnInt();
@@ -27,14 +32,49 @@ class DealDetailsController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    deal = Get.arguments as DealModel;
-    _quantityLeft.value = deal.quantityLeft;
+
+    if (Get.arguments is DealModel) {
+      _deal.value = Get.arguments as DealModel;
+      _quantityLeft.value = _deal.value!.quantityLeft;
+      _logViewEvent(_deal.value!.id);
+      _setupCartWorker();
+    } else {
+      final idStr = Get.parameters['id'] ??
+          (Get.arguments is int || Get.arguments is String
+              ? Get.arguments.toString()
+              : null);
+      final dealId = int.tryParse(idStr ?? '');
+      if (dealId != null) {
+        isLoading.value = true;
+        _loadDeal(dealId);
+      }
+    }
+  }
+
+  Future<void> _loadDeal(int id) async {
+    try {
+      isLoading.value = true;
+      final fetched = await dealRepo.fetchById(id);
+      _deal.value = fetched;
+      _quantityLeft.value = fetched.quantityLeft;
+      _logViewEvent(fetched.id);
+      _setupCartWorker();
+    } catch (e) {
+      LogService.log('Error loading deal by id $id: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  void _logViewEvent(int dealId) {
     analytics.logEvent('deal_details_view', {
-      'deal_id': deal.id,
+      'deal_id': dealId,
       'source': Get.parameters['source'] ?? 'unknown',
     });
-    // Whenever the cart changes, re-check this deal's remaining stock so the
-    // details screen never shows stale availability.
+  }
+
+  void _setupCartWorker() {
+    _cartWorker?.dispose();
     _cartWorker = ever(cartService.itemCount, (_) => _recheckAvailability());
   }
 
@@ -45,16 +85,25 @@ class DealDetailsController extends GetxController {
   }
 
   Future<void> _recheckAvailability() async {
-    LogService.log('re-checking availability for deal ${deal.id}');
-    final fresh = await dealRepo.fetchById(deal.id);
-    _quantityLeft.value = fresh.quantityLeft;
+    final currentDeal = _deal.value;
+    if (currentDeal == null) return;
+    LogService.log('re-checking availability for deal ${currentDeal.id}');
+    try {
+      final fresh = await dealRepo.fetchById(currentDeal.id);
+      _quantityLeft.value = fresh.quantityLeft;
+    } catch (e) {
+      LogService.log(
+          'Failed to recheck availability for deal ${currentDeal.id}: $e');
+    }
   }
 
   void addToCart() {
-    cartService.add(deal);
+    final currentDeal = _deal.value;
+    if (currentDeal == null) return;
+    cartService.add(currentDeal);
     Get.snackbar(
       'Added to bag',
-      '${deal.name} — pick up ${deal.pickupWindow.label}',
+      '${currentDeal.name} — pick up ${currentDeal.pickupWindow.label}',
       snackPosition: SnackPosition.BOTTOM,
       duration: const Duration(seconds: 2),
     );

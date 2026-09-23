@@ -194,3 +194,50 @@ Approximate timeline ===> 20 mins
 
 
 --------
+
+### RES-107 · Deep link opens to a crash
+
+#### Root Cause
+
+- Previously, `DealDetailsController` assumed `Get.arguments` was always provided and held a
+  `DealModel` instance (`deal = Get.arguments as DealModel;`).
+- When opening a deal via deep link (e.g. `rescu://open/deal?id=42&source=push` or
+  `Get.toNamed('/deal?id=42&source=push')`), `Get.arguments` is `null` because arguments are sent
+  via URL query parameters (`Get.parameters['id']`) instead of memory objects.
+- Attempting to cast `null` directly as `DealModel` caused a runtime type error:
+  `type 'Null' is not a subtype of type 'DealModel'`.
+
+#### Solutions
+
+- Updated `DealDetailsController.onInit()` to inspect the type of `Get.arguments`:
+    - If `Get.arguments` is a `DealModel` (in-app navigation from deal cards), use it immediately
+      without network waiting.
+    - If `Get.arguments` is `null` or not a `DealModel` (deep link navigation), extract the `id`
+      from `Get.parameters['id']` (or `Get.arguments` if passed as an ID value), parse it to an
+      integer, and set `isLoading = true`.
+    - Fetch the complete `DealModel` asynchronously from the repository via
+      `dealRepo.fetchById(dealId)`.
+    - Upon completion, update `_deal.value`, `_quantityLeft.value`, log the `deal_details_view`
+      analytics event with the source parameter (e.g., `'push'`), and initialize the cart reactive
+      worker (`_setupCartWorker()`).
+
+#### Alternatives Considered & Rejected
+
+- **Always fetching by ID from network**: Always fetching from `dealRepo.fetchById()` on screen
+  open (ignoring `Get.arguments`) was considered to guarantee fresh data.
+    - *Rejected because*: Passing the `DealModel` via arguments when tapping a deal card provides
+      instant screen rendering without an extra loading spinner. The controller already refreshes
+      availability via `_recheckAvailability()` when cart state changes.
+
+#### Edge Cases
+
+- **Missing or Invalid ID**: If `Get.parameters['id']` is missing or cannot be parsed into an
+  integer, `isLoading` completes and `controller.deal` remains `null`. The screen safely shows a
+  fallback/loading state rather than throwing an unhandled exception.
+- **Preserving Analytics Parameters**: `Get.parameters['source']` is retrieved to ensure deep link
+  sources (e.g., `source=push`) are accurately logged in analytics events.
+
+Approximate timeline ===> 15 mins
+
+
+-------
