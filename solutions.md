@@ -136,4 +136,61 @@ Approximate Timeline ===> 40 mins
 
 --------
 
-####
+### RES-106 · Wrong pickup times; "Pickup today" filter misses deals
+
+#### Root Cause
+
+- **Timezone Conversion Missing**: The backend sends standard ISO-8601 UTC strings ending with `Z` (
+  like `"2025-01-14T23:00:00.000Z"` for a store opening at `06:00` Bangkok time UTC+7). In
+  `PickupWindowModel.fromJson()`, `DateTime.parse()` parsed these into UTC `DateTime` instances (
+  `isUtc = true`). When `DateFormat('HH:mm').format(start)` generated the label, it formatted UTC
+  hours (`23:00`) instead of converting to local time (`06:00`).
+- **Broken "Pickup Today" Filter**: `PickupWindowModel.isToday` was checking
+  `start.day == DateTime.now().day`. Because `start.day` evaluated to the UTC day (14th) while
+  `DateTime.now().day` evaluated to local device day (15th), stores with pickup slots today were
+  filtered out. Also, comparing only `.day` didn't verify if month and year matched.
+
+#### Solutions & Steps I Took
+
+1. **Converted DateTime Parsing to Local Time**:
+    - Added `.toLocal()` when parsing `start` and `end` inside `PickupWindowModel.fromJson()`. Now
+      `start` and `end` are always stored in local device timezone.
+    - Also added `.toLocal()` to `OrderModel.fromJson()` for `pickupStart` and `pickupEnd` for
+      consistency.
+
+2. **Fixed `isToday` Comparison**:
+    - Updated `isToday` in `PickupWindowModel` to compare local year, month, and day against
+      `DateTime.now()`:
+      ```dart
+      bool get isToday {
+        final now = DateTime.now();
+        return start.year == now.year &&
+            start.month == now.month &&
+            start.day == now.day;
+      }
+      ```
+
+3. **Alternative Considered & Rejected**:
+    - I considered keeping `start` / `end` in UTC and only calling `.toLocal()` inside the `label`
+      getter.
+    - I rejected this because any other widget or getter accessing `start` directly (like `isToday`
+      or `untilStart`) would still receive UTC time and could easily re-introduce timezone bugs
+      later.
+
+4. **Edge Cases**:
+    - Overnight stores (e.g., open 22:00 to 01:00 next day): Calling `.toLocal()` on both start and
+      end handles the day rollover automatically based on device timezone.
+
+5. **Unit Tests**:
+    - Updated `test/model_test.dart` to test that UTC ISO strings convert to local time, produce
+      correct formatted labels, and accurately evaluate `isToday`.
+
+#### AI Usage
+
+I used AI to confirm Dart's `DateTime.parse` behavior with UTC strings and generate unit test cases
+for timezone parsing.
+
+Approximate timeline ===> 20 mins
+
+
+--------

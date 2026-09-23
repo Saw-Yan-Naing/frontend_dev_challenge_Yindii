@@ -36,8 +36,9 @@ class OrderModel {
       quantity: json['quantity'] as int? ?? 1,
       total: json['total'] as num? ?? 0,
       currencyCode: json['currencyCode'] as String? ?? 'THB',
-      pickupStart: DateTime.parse(json['pickupStart'] as String? ?? ''),
-      pickupEnd: DateTime.parse(json['pickupEnd'] as String? ?? ''),
+      pickupStart:
+          DateTime.parse(json['pickupStart'] as String? ?? '').toLocal(),
+      pickupEnd: DateTime.parse(json['pickupEnd'] as String? ?? '').toLocal(),
     );
   }
 
