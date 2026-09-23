@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 
 import '../../model/deal_model.dart';
@@ -9,12 +11,17 @@ class SearchDealsController extends GetxController {
 
   SearchDealsController({required this.dealRepo});
 
+  ///Added for the debounce query for the better query performance for both backend api calls and local database
+  Timer? _timer;
+
   final results = <DealModel>[].obs;
   final isLoading = false.obs;
   final hasSearched = false.obs;
 
+  ///Added debounce for the better api calls to wait for the user input
   void onQueryChanged(String query) {
-    _search(query);
+    _timer?.cancel();
+    _timer = Timer(Duration(milliseconds: 300), () => _search(query));
   }
 
   Future<void> _search(String query) async {
