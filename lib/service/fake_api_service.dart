@@ -28,9 +28,9 @@ class FakeApiService extends GetxService {
   int _reservationSeq = 0;
 
   Future<FakeApiService> init() async {
-    final storesRaw = jsonDecode(
-            await rootBundle.loadString('assets/data/stores.json'))
-        as List<dynamic>;
+    final storesRaw =
+        jsonDecode(await rootBundle.loadString('assets/data/stores.json'))
+            as List<dynamic>;
     final dealsRaw =
         jsonDecode(await rootBundle.loadString('assets/data/deals.json'))
             as List<dynamic>;
@@ -38,17 +38,14 @@ class FakeApiService extends GetxService {
         jsonDecode(await rootBundle.loadString('assets/data/orders.json'))
             as List<dynamic>;
 
-    _stores = storesRaw
-        .map((s) => _enrichStore(s as Map<String, dynamic>))
-        .toList();
+    _stores =
+        storesRaw.map((s) => _enrichStore(s as Map<String, dynamic>)).toList();
     final storesById = {for (final s in _stores) s['id'] as int: s};
     _deals = dealsRaw
-        .map((d) =>
-            _enrichDeal(d as Map<String, dynamic>, storesById))
+        .map((d) => _enrichDeal(d as Map<String, dynamic>, storesById))
         .toList();
-    _orders = ordersRaw
-        .map((o) => _enrichOrder(o as Map<String, dynamic>))
-        .toList();
+    _orders =
+        ordersRaw.map((o) => _enrichOrder(o as Map<String, dynamic>)).toList();
 
     LogService.log(
         'FakeApiService ready: ${_stores.length} stores, ${_deals.length} deals');
@@ -182,19 +179,18 @@ class FakeApiService extends GetxService {
         }
         final expires = DateTime.parse(res['expiresAt'] as String);
         if (DateTime.now().toUtc().isAfter(expires)) {
-          throw const ApiException(
-              'Reservation expired — stock was released', statusCode: 410);
+          throw const ApiException('Reservation expired — stock was released',
+              statusCode: 410);
         }
       }
     }
     num total = 0;
     for (final item in items) {
-      final deal =
-          _deals.firstWhereOrNull((d) => d['id'] == item['dealId']);
+      final deal = _deals.firstWhereOrNull((d) => d['id'] == item['dealId']);
       if (deal == null) continue;
       total += (deal['price'] as num) * (item['quantity'] as int? ?? 1);
-      deal['quantityLeft'] =
-          max(0, (deal['quantityLeft'] as int) - (item['quantity'] as int? ?? 1));
+      deal['quantityLeft'] = max(
+          0, (deal['quantityLeft'] as int) - (item['quantity'] as int? ?? 1));
     }
     final order = {
       'id': 9100 + _mutationCounter,
@@ -203,7 +199,8 @@ class FakeApiService extends GetxService {
       'storeName': 'Multiple stores',
       'imageUrl': 'https://picsum.photos/seed/order$_mutationCounter/1600/1200',
       'status': 'CONFIRMED',
-      'quantity': items.fold<int>(0, (a, b) => a + (b['quantity'] as int? ?? 1)),
+      'quantity':
+          items.fold<int>(0, (a, b) => a + (b['quantity'] as int? ?? 1)),
       'total': total,
       'currencyCode': 'THB',
       'pickupStart': DateTime.now()
@@ -242,8 +239,11 @@ class FakeApiService extends GetxService {
     DateTime marketToUtc(DateTime marketWallClock) =>
         marketWallClock.subtract(const Duration(hours: _marketUtcOffsetHours));
 
-    var startMarket = DateTime.utc(nowMarket.year, nowMarket.month,
-        nowMarket.day, store['pickupStartHour'] as int,
+    var startMarket = DateTime.utc(
+        nowMarket.year,
+        nowMarket.month,
+        nowMarket.day,
+        store['pickupStartHour'] as int,
         store['pickupStartMinute'] as int);
     var endMarket = DateTime.utc(nowMarket.year, nowMarket.month, nowMarket.day,
         store['pickupEndHour'] as int, store['pickupEndMinute'] as int);

@@ -23,6 +23,7 @@ class HomeController extends GetxController {
   int _page = 1;
   int _totalPages = 1;
   bool _isFetchingMore = false;
+  int _fetchId = 0;
 
   bool get hasMore => _page < _totalPages;
 
@@ -56,6 +57,8 @@ class HomeController extends GetxController {
   }
 
   Future<void> refreshDeals() async {
+    _fetchId++;
+    _isFetchingMore = false;
     _page = 1;
     final res = await dealRepo.fetchDeals(page: 1);
     _totalPages = res.totalPages;
@@ -70,17 +73,27 @@ class HomeController extends GetxController {
       return;
     }
     _isFetchingMore = true;
-    _page++;
+    final currentFetchId = _fetchId;
+    final nextPage = _page + 1;
     try {
-      final res = await dealRepo.fetchDeals(page: _page);
+      final res = await dealRepo.fetchDeals(page: nextPage);
+      // Guard: If a refresh happened while this loadMore was in-flight, discard stale result
+      if (currentFetchId != _fetchId) return;
+
+      _page = nextPage;
       _totalPages = res.totalPages;
-      deals.addAll(res.items);
+
+      // Deduplicate items by ID
+      final existingIds = deals.map((d) => d.id).toSet();
+      final newItems =
+          res.items.where((d) => !existingIds.contains(d.id)).toList();
+      deals.addAll(newItems);
     } catch (e) {
       LogService.error('loadMore failed', e);
-      _page--;
+    } finally {
+      _isFetchingMore = false;
+      refreshController.loadComplete();
     }
-    _isFetchingMore = false;
-    refreshController.loadComplete();
   }
 
   void scrollToTop() {

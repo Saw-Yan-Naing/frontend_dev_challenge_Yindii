@@ -58,3 +58,34 @@ and refined for the md report.
 Approximate timeline ===> 30 mins
 
 -----
+
+### RES-104 · Duplicate deals in the home feed
+
+- **Root Cause**: An asynchronous race condition between `loadMore()` and `refreshDeals()`. When
+  scrolling to the bottom of the feed, `loadMore()` increments `_page` to 2 and initiates an async
+  call to `fetchDeals(page: 2)`. If the user immediately pulls down to refresh while that request is
+  still in flight, `refreshDeals()` resets `_page = 1` and calls `fetchDeals(page: 1)`. When the
+  stale `loadMore()` request completes later, it appends Page 2 items (`deals.addAll(...)`) to the
+  newly refreshed Page 1 items. Because `_page` was set to 1 by `refreshDeals()`, the next scroll
+  action increments `_page` to 2 again and fetches Page 2 a second time, appending duplicate deal
+  cards to the list.
+
+#### Solutions
+
+- **Fetch Generation Counter (`_fetchId`)**: Introduced a request generation counter `_fetchId` that
+  increments on every `refreshDeals()`. Before appending items in `loadMore()`, the controller
+  verifies `currentFetchId == _fetchId`. If a refresh occurred while `loadMore()` was in flight, the
+  stale response is safely discarded.
+- **Deduplication by ID**: Filtered newly fetched deals against existing deal IDs (
+  `deals.map((d) => d.id).toSet()`) before appending to ensure duplicate IDs can never enter the
+  reactive list.
+- **Unit Test**: Added a test case in `test/home_controller_test.dart` using a mock `DealRepo` with
+  async `Completer`s to simulate in-flight race conditions and verify no duplicates occur.
+
+#### AI Usage
+
+Used AI to write unit test harness using `Completer` to simulate in-flight async network race
+condition and write the solution md.
+
+Approximate timeline ===> 20 mins
+
