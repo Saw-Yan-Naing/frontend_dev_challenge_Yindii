@@ -12,12 +12,56 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Obx(() {
-        if (controller.isLoading.value || controller.deal == null) {
+        if (controller.isLoading.value) {
           return Scaffold(
             appBar: AppBar(),
             body: const Center(child: CircularProgressIndicator()),
           );
         }
+
+        if (controller.deal == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Deal Details')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 48, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    Text(
+                      controller.errorMessage.value ?? 'Deal not found',
+                      style: const TextStyle(fontSize: 16, color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () => Get.back(),
+                          child: const Text('Go back'),
+                        ),
+                        if (controller.errorMessage.value != null &&
+                            controller.errorMessage.value !=
+                                'Invalid deal link') ...[
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: controller.retryLoad,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+
         final deal = controller.deal!;
         return CustomScrollView(
           slivers: [

@@ -231,9 +231,10 @@ Approximate timeline ===> 20 mins
 
 #### Edge Cases
 
-- **Missing or Invalid ID**: If `Get.parameters['id']` is missing or cannot be parsed into an
-  integer, `isLoading` completes and `controller.deal` remains `null`. The screen safely shows a
-  fallback/loading state rather than throwing an unhandled exception.
+- **Missing or Invalid ID / Fetch Failures**: If `Get.parameters['id']` is missing, invalid, or
+  `fetchById` fails, `isLoading` completes (`isLoading = false`) and `errorMessage` is set. The screen
+  displays an error view with a clear message ("Deal not found" or "Failed to load deal details") and
+  action buttons ("Go back" and "Retry") instead of remaining stuck on an indefinite loading indicator.
 - **Preserving Analytics Parameters**: `Get.parameters['source']` is retrieved to ensure deep link
   sources (e.g., `source=push`) are accurately logged in analytics events.
 

@@ -22,6 +22,7 @@ class DealDetailsController extends GetxController {
   DealModel? get deal => _deal.value;
 
   final isLoading = false.obs;
+  final errorMessage = RxnString();
 
   Worker? _cartWorker;
 
@@ -45,8 +46,9 @@ class DealDetailsController extends GetxController {
               : null);
       final dealId = int.tryParse(idStr ?? '');
       if (dealId != null) {
-        isLoading.value = true;
         _loadDeal(dealId);
+      } else {
+        errorMessage.value = 'Invalid deal link';
       }
     }
   }
@@ -54,6 +56,7 @@ class DealDetailsController extends GetxController {
   Future<void> _loadDeal(int id) async {
     try {
       isLoading.value = true;
+      errorMessage.value = null;
       final fetched = await dealRepo.fetchById(id);
       _deal.value = fetched;
       _quantityLeft.value = fetched.quantityLeft;
@@ -61,8 +64,20 @@ class DealDetailsController extends GetxController {
       _setupCartWorker();
     } catch (e) {
       LogService.log('Error loading deal by id $id: $e');
+      errorMessage.value = 'Failed to load deal details';
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  void retryLoad() {
+    final idStr = Get.parameters['id'] ??
+        (Get.arguments is int || Get.arguments is String
+            ? Get.arguments.toString()
+            : null);
+    final dealId = int.tryParse(idStr ?? '');
+    if (dealId != null) {
+      _loadDeal(dealId);
     }
   }
 
