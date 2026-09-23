@@ -40,6 +40,7 @@ class FlashDealsSection extends StatelessWidget {
             itemBuilder: (context, index) {
               final deal = deals[index];
               return SizedBox(
+                key: ValueKey(deal.id),
                 width: 200,
                 child: Card(
                   color: Colors.white,
