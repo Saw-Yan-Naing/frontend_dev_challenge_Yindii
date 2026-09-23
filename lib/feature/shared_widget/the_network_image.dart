@@ -28,6 +28,7 @@ class TheNetworkImage extends StatelessWidget {
         width: width,
         height: height,
         fit: fit,
+        maxWidthDiskCache: 800,
         placeholder: (context, _) => Shimmer.fromColors(
           baseColor: Colors.grey.shade300,
           highlightColor: Colors.grey.shade100,

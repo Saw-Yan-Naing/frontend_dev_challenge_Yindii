@@ -89,3 +89,51 @@ condition and write the solution md.
 
 Approximate timeline ===> 20 mins
 
+----
+
+### RES-105 · Home feed is janky and memory keeps climbing
+
+**Root Cause**
+
+- Whole-Screen Rebuilds: The top-level Scaffold was wrapped in an Obx listening to
+  controller.scrollOffset.value. Scroll updates triggered full-screen rebuilds on every frame.
+- Eager Instantiation: ListView(children: [ ...controller.visibleDeals.map(...) ]) eagerly
+  instantiated all deal cards in memory instead of lazily building visible items.
+- Image Cache Memory Growth: CachedNetworkImage loaded full-resolution images into memory without
+  cache dimensions (memCacheWidth / memCacheHeight).
+
+#### Solutions
+
+**Refactor Process**
+
+- CustomScrollView with Slivers: Replace ListView with a CustomScrollView inside SmartRefresher.
+- Modular Widget Separation:
+
+    - _HomeAppBar: Scoped Obx for scroll elevation without rebuilding the body.
+    - _ScrollToTopFab: Scoped Obx for FAB visibility (scrollOffset > 800).
+    - home_filter_header.dart: SliverToBoxAdapter with scoped Obx for todayOnly filter chip.
+    - home_deals_sliver.dart: SliverList.builder with scoped Obx for lazy, on-demand deal card
+      rendering.
+    - home_loading_sliver.dart: Lazy SliverList.builder for shimmer cards during initial load.
+
+
+- Image Memory Caching: Add maxWidthDiskCache to the_network_image.dart to
+  constrain image memory footprint.
+
+#### Performance Profiling Evidence
+
+**Before Fix (Frequent Jank / Red Bars during scrolling)**
+![Before Fix](assets/solution/home_screen_janking(before-fix).png)
+
+**After Fix (Smooth 60/90 FPS scrolling with no jank frames)**
+![After Fix](assets/solution/home_screen_janking(after-fix).png)
+
+### AI Usage
+
+I Use Gemini to implement the refactor process How I want with the prompt
+
+Approximate Timeline ===> 40 mins
+
+--------
+
+####
