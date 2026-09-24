@@ -35,7 +35,7 @@ Approximate timeline ===> 15 mins
 ### RES-103 · Requests pile up the longer you browse
 
 - **Root Cause**: In `DealDetailsController.onInit()`, `ever(cartService.itemCount, ...)` creates a
-  GetX `Worker` reactive listener subscribed to `cartService.itemCount` (which is hosted on a
+  GetX `Worker` reactive listener subscribed to `cartService.itemCount` (which is hosted on an
   app-session-long `GetxService`). Since the `Worker` reference was not captured and `.dispose()`
   was never called in `onClose()`, every closed or previously opened deal details screen retains its
   reactive subscription active in memory. Whenever the cart item count updates, all active and
@@ -328,7 +328,7 @@ Approximate timeline ===> 35 mins
 
 #### Alternatives Considered & Rejected
 
-- **Keeping `VisibilityDetector` Active Always**: Keeping `VisibilityDetector` attached after logging an impression was rejected because processing continuous scroll layout events for already-impressioned cards wastes CPU cycles during long scroll sessions.
+- **Keeping `VisibilityDetector` Active Always**: Keeping `VisibilityDetector` attached after logging an impression was rejected because processing continuous scroll layout events for already-impression cards wastes CPU cycles during long scroll sessions.
 - **Immediate Event Sending**: Sending `FakeApiService.sendAnalyticsBatch` one by one was rejected because it causes excessive HTTP network requests on scrolling.
 
 #### Edge Cases Handled
@@ -342,3 +342,61 @@ Approximate timeline ===> 35 mins
 Used AI to design unit tests in `test/analytics_test.dart` for impression deduplication, 10-event threshold batching, and 15-second timer batching.
 
 Approximate timeline ===> 30 mins
+
+--------
+
+### F-3 · Stock reservations with optimistic UI
+
+#### Requirements & Overview
+
+- Reserve stock asynchronously when items are added or quantity is increased in the bag.
+- UI must respond **optimistically** (instant feedback). If the reservation fails on backend (e.g. 409 stock contention), reconcile by rolling back local state and notifying the user with a clear, non-technical message.
+- Each line in the bag shows a live countdown of its 5-minute stock hold.
+- Decrementing or removing a line releases or adjusts the reservation hold on the backend.
+- Checkout passes reservation IDs; handle `410 reservation expired` rejections gracefully.
+- Product decision for reservation expiry while browsing or mid-checkout.
+
+#### Solutions & Architectural Design
+
+1. **Optimistic State & Reconciliation (`CartService` in `lib/service/cart_service.dart`)**:
+   - On `add(deal)` or quantity increment:
+     - Instantly update local reactive list (`items`) and recount totals. The UI updates without delay.
+     - Set `isReserving = true` on the item and initiate `_syncReservation(deal, targetQuantity, oldQuantity)`.
+   - **Reconciliation on 409 Failure**:
+     - If adding a new deal (old quantity = 0) fails with 409 (stock contended), `CartService` removes the item from the bag and shows a snackBar: *"Could not reserve [Name]: someone grabbed the last one."*
+     - If incrementing quantity fails, `CartService` reverts quantity back to `oldQuantity` and keeps the prior valid reservation hold intact.
+
+2. **Concurrency & Sequence Tokens (`_reservationTokens`)**:
+   - To handle rapid user taps (`+`, `+`, `-`), `CartService` maintains a per-deal request counter `_reservationTokens[dealId]`.
+   - Each reservation call captures its request token. If a newer request or removal occurs while the API call is in flight, the stale response is ignored and its newly issued reservation ID is immediately released (`releaseReservation`).
+
+3. **Line Item Reservation Countdown (`CartScreen` & `_CartReservationBadge`)**:
+   - Added `isReserving` and `reservation` fields to `CartItemModel`.
+   - In `CartScreen`, `_CartReservationBadge` listens to `CentralTicker.instance.nowNotifier`.
+   - Shows `"Reserving hold..."` with a spinner while in flight. Once secured, displays a live `"Reserved: mm:ss"` countdown.
+
+4. **Hold Adjustment & Release**:
+   - Decrementing quantity triggers `_syncReservation()` with the lower quantity. Once the new reservation succeeds, the older reservation ID is released.
+   - Removing an item or calling `clear()` triggers `orderRepo.releaseReservation(reservation.id)` in the background.
+
+5. **Product Decision & Expiry Policy (Underspecified Requirement)**:
+   - **Active Auto-Extension**: When an item's 5-minute reservation expires while the user is active in the app, `CartService` (listening to `CentralTicker`) automatically attempts a background re-reservation. If stock is still available, the hold is seamlessly extended for another 5 minutes without disturbing the user.
+   - **Fair Stock Release**: If stock was claimed by another customer during the expired window, the item is removed from the bag with a clear notification: *"Reservation for [Item] expired and stock was claimed by another customer."*
+   - **Pre-Checkout & 410 Handling**: Before sending checkout, `CartController` verifies reservation statuses. If checkout returns a `410` status code, `CartController` catches it cleanly, notifies the user (*"Your stock reservation expired before payment completed. Refreshing your bag..."*), and refreshes cart state without crashing.
+
+#### Alternatives Considered & Rejected
+
+- **Hard Deletion on Expiry**: Immediately deleting items from the bag when 5 minutes elapse without checking stock availability was rejected because it creates extreme friction for active users about to check out when stock is plentiful.
+- **Silent Expiry until Checkout**: Ignoring expiration on the UI and letting checkout fail with 410 was rejected because it misleads users and leads to high cart abandonment.
+
+#### Edge Cases Handled
+
+- **In-Flight Reservation at Checkout**: `CartController.checkout()` checks if `item.isReserving` is true and asks the user to wait a moment.
+- **Unit Test Overlay Context**: Created `_showSnackbar` helper so `CartService` and `CartController` run safely in unit test suites without an active Flutter widget overlay.
+
+#### AI Usage
+
+Used AI to brainstorm product trade-offs for reservation expiration and generate comprehensive unit test coverage in `test/cart_reservation_test.dart`.
+
+Approximate timeline ===> 35 mins
+

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../app_config.dart';
+import '../../model/cart_item_model.dart';
+import '../../util/central_ticker.dart';
+import '../shared_widget/flash_countdown_badge.dart';
 import '../shared_widget/the_network_image.dart';
 import 'cart_controller.dart';
 
@@ -54,6 +57,7 @@ class CartScreen extends GetView<CartController> {
                                   fontSize: 13,
                                   color: AppConfig.primaryGreen,
                                   fontWeight: FontWeight.w600)),
+                          _CartReservationBadge(item: item),
                         ],
                       ),
                     ),
@@ -116,6 +120,93 @@ class CartScreen extends GetView<CartController> {
           ),
         );
       }),
+    );
+  }
+}
+
+class _CartReservationBadge extends StatelessWidget {
+  final CartItemModel item;
+
+  const _CartReservationBadge({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    if (item.isReserving) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 4),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 10,
+              height: 10,
+              child: CircularProgressIndicator(strokeWidth: 1.5),
+            ),
+            SizedBox(width: 6),
+            Text(
+              'Reserving hold...',
+              style: TextStyle(
+                fontSize: 11.5,
+                color: Colors.orange,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final res = item.reservation;
+    if (res == null) {
+      return const SizedBox.shrink();
+    }
+
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: CentralTicker.instance.nowNotifier,
+      builder: (context, now, _) {
+        final remaining = res.expiresAt.difference(now.toUtc());
+        final isExpired = remaining.isNegative || remaining.inSeconds <= 0;
+        final formattedText = formatFlashCountdown(remaining);
+
+        if (isExpired) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Icon(Icons.timer_off_outlined,
+                    size: 13, color: Colors.red.shade700),
+                const SizedBox(width: 4),
+                Text(
+                  'Hold expired',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: Colors.red.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              const Icon(Icons.timer_outlined,
+                  size: 13, color: AppConfig.primaryGreen),
+              const SizedBox(width: 4),
+              Text(
+                'Reserved: $formattedText',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: AppConfig.primaryGreen,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

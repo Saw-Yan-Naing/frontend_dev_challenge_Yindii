@@ -9,7 +9,18 @@ class CartItemModel {
   /// see the "Reservations" feature task.
   ReservationModel? reservation;
 
-  CartItemModel({required this.deal, this.quantity = 1, this.reservation});
+  /// True while a reservation request is in flight for this item.
+  bool isReserving;
+
+  CartItemModel({
+    required this.deal,
+    this.quantity = 1,
+    this.reservation,
+    this.isReserving = false,
+  });
 
   num get lineTotal => deal.price * quantity;
+
+  bool get isReservationExpired =>
+      reservation != null && reservation!.isExpired;
 }
