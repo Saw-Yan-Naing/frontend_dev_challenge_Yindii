@@ -5,6 +5,7 @@ import '../../app_config.dart';
 import '../../model/deal_model.dart';
 import '../../routes/routes.dart';
 import '../../util/central_ticker.dart';
+import 'deal_impression_detector.dart';
 import 'flash_countdown_badge.dart';
 import 'the_network_image.dart';
 
@@ -12,8 +13,14 @@ import 'the_network_image.dart';
 class DealCard extends StatelessWidget {
   final DealModel deal;
   final String source;
+  final int position;
 
-  const DealCard({super.key, required this.deal, this.source = 'home'});
+  const DealCard({
+    super.key,
+    required this.deal,
+    this.source = 'home_feed',
+    this.position = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -132,20 +139,26 @@ class DealCard extends StatelessWidget {
       ),
     );
 
-    if (!deal.isFlashSale) {
-      return cardContent;
+    Widget cardWidget = cardContent;
+    if (deal.isFlashSale) {
+      cardWidget = ValueListenableBuilder<DateTime>(
+        valueListenable: CentralTicker.instance.nowNotifier,
+        child: cardContent,
+        builder: (context, now, child) {
+          final isExpired = deal.isExpiredAt(now);
+          return Opacity(
+            opacity: isExpired ? 0.6 : 1.0,
+            child: child!,
+          );
+        },
+      );
     }
 
-    return ValueListenableBuilder<DateTime>(
-      valueListenable: CentralTicker.instance.nowNotifier,
-      child: cardContent,
-      builder: (context, now, child) {
-        final isExpired = deal.isExpiredAt(now);
-        return Opacity(
-          opacity: isExpired ? 0.6 : 1.0,
-          child: child!,
-        );
-      },
+    return DealImpressionDetector(
+      dealId: deal.id,
+      source: source,
+      position: position,
+      child: cardWidget,
     );
   }
 }

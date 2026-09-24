@@ -19,6 +19,8 @@ class HomeDealsSliver extends StatelessWidget {
           final deal = deals[index];
           return DealCard(
             deal: deal,
+            source: 'home_feed',
+            position: index,
             key: ValueKey(deal.id),
           );
         },

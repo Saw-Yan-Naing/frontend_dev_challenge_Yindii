@@ -290,3 +290,55 @@ Used AI to assist in designing the `CentralTickerNotifier` listener-counting lif
 
 Approximate timeline ===> 35 mins
 
+--------
+
+### F-2 · Impression tracking
+
+#### Requirements & Overview
+
+- Log a `deal_impression` event when a deal card has been **≥50% visible for at least 1 continuous second**. Properties: `deal_id`, `source` (`home_feed`, `flash_rail`, or `search`), `position` (index in its list).
+- Log at most **once per deal per app session**, across all screens.
+- Batch analytics events and deliver via `FakeApiService.sendAnalyticsBatch` when either **10 events have accumulated** or **15 seconds have passed since the first unsent event** — whichever comes first.
+- Scrolling performance must not regress.
+
+#### Solutions & Architectural Design
+
+1. **Session-Level Impression Set (`AnalyticsService` in `lib/service/analytics_service.dart`)**:
+   - `AnalyticsService` maintains a `Set<int> _impressionedDealIds`.
+   - Before firing an impression event, `hasImpression(dealId)` checks whether the deal was already recorded during the current app session.
+   - If true, the impression is ignored regardless of which screen or source (`home_feed`, `flash_rail`, `search`) triggers it.
+
+2. **Zero-Overhead Visibility Detection (`DealImpressionDetector` in `lib/feature/shared_widget/deal_impression_detector.dart`)**:
+   - Built a reusable `DealImpressionDetector` widget wrapping `VisibilityDetector`.
+   - **Performance Optimization**: When `analytics.hasImpression(dealId)` is `true`, `DealImpressionDetector` immediately returns its `child` without instantiating `VisibilityDetector` or subscribing to scroll/layout callbacks.
+   - **Continuous 1-Second Timer**: When `visibleFraction >= 0.5`, a 1-second `Timer` is initialized. If the card scrolls out of view (`visibleFraction < 0.5`) or unmounts before 1 continuous second, `_timer?.cancel()` cancels the timer immediately.
+   - When the 1-second timer completes, `trackImpression()` records the event and calls `setState()`, which immediately unmounts the `VisibilityDetector` for that card, guaranteeing zero scrolling jank.
+
+3. **Analytics Batching & Delivery (`AnalyticsService`)**:
+   - Maintains a pending queue `_pendingBatch` for outgoing events.
+   - **15-Second Timer**: When the first unsent event enters `_pendingBatch`, a 15-second `Timer` starts.
+   - **Batch Threshold**: When `_pendingBatch.length >= 10`, `_flushBatch()` cancels the timer and delivers the 10-event batch immediately via `FakeApiService.sendAnalyticsBatch`.
+   - **15-Second Flush**: If 15 seconds elapse before reaching 10 events, the timer callback triggers `_flushBatch()`, delivering whatever unsent events have accumulated.
+   - Calls `_flushBatch()` in `onClose()` to ensure no unsent events are lost on teardown.
+
+4. **Wired Across All Surfaces**:
+   - **Home Feed (`HomeDealsSliver`)**: Passes `source: 'home_feed'` and `position: index` to `DealCard`.
+   - **Flash Sale Rail (`FlashDealsSection`)**: Wraps cards in `DealImpressionDetector` with `source: 'flash_rail'` and `position: index`.
+   - **Search Results (`SearchScreen`)**: Passes `source: 'search'` and `position: index` to `DealCard`.
+
+#### Alternatives Considered & Rejected
+
+- **Keeping `VisibilityDetector` Active Always**: Keeping `VisibilityDetector` attached after logging an impression was rejected because processing continuous scroll layout events for already-impressioned cards wastes CPU cycles during long scroll sessions.
+- **Immediate Event Sending**: Sending `FakeApiService.sendAnalyticsBatch` one by one was rejected because it causes excessive HTTP network requests on scrolling.
+
+#### Edge Cases Handled
+
+- **Fast Scrolling**: Swiping past 20 items in 2 seconds cancels timers immediately as cards exit the viewport, logging 0 impression events for unviewed items.
+- **Cross-Screen Duplicates**: Seeing a deal in `flash_rail` and then scrolling past it in `home_feed` records only 1 impression event in the session.
+- **App Teardown**: `onClose()` flushes any remaining buffered events so no impression analytics are lost.
+
+#### AI Usage
+
+Used AI to design unit tests in `test/analytics_test.dart` for impression deduplication, 10-event threshold batching, and 15-second timer batching.
+
+Approximate timeline ===> 30 mins
