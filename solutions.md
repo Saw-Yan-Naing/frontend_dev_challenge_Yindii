@@ -242,3 +242,51 @@ Approximate timeline ===> 15 mins
 
 
 -------
+
+### F-1 · Live flash-sale countdowns
+
+#### Requirements & Overview
+
+- Display a live countdown (`mm:ss`, or `hh:mm:ss` above an hour) everywhere the flash deal appears: flash rail, home feed cards, and details screen.
+- When countdown reaches zero:
+  - Card switches to a disabled "Expired" state (`EXPIRED` badge, 60% opacity).
+  - Deal can no longer be added to the bag (disabled button in details screen, checked in `addToCart` & `CartService.add`).
+  - If already in bag, it is automatically removed with a visible notice (`Get.snackbar`).
+- Home feed must remain smooth with 100+ visible countdowns: per-second rebuilds must be strictly scoped to the text node that changes, avoiding card or list re-renders.
+
+#### Solutions & Architectural Design
+
+1. **Central Ticker (`CentralTicker` / `CentralTickerNotifier` in `lib/util/central_ticker.dart`)**:
+   - Instead of creating individual `Timer.periodic` instances for each visible card (which causes 100+ separate timers firing asynchronously), a singleton `CentralTicker` manages a single 1-second `Timer.periodic`.
+   - `CentralTickerNotifier` extends `ValueNotifier<DateTime>`. It overrides `addListener` and `removeListener` so that the timer automatically starts when the first listener mounts and stops when all listeners unmount. This ensures zero CPU/battery drain when no countdown widgets are visible.
+
+2. **Scoped Widget Rebuilds (`FlashCountdownBadge` in `lib/feature/shared_widget/flash_countdown_badge.dart`)**:
+   - `FlashCountdownBadge` listens to `CentralTicker.instance.nowNotifier` using `ValueListenableBuilder<DateTime>`.
+   - On each 1-second tick, `ValueListenableBuilder` only executes its builder callback, which formats the duration string (`formatFlashCountdown`) and updates the `Text` badge node (`⚡ 05:23` or `EXPIRED`).
+   - In `DealCard`, the card content layout is passed to `ValueListenableBuilder`'s `child:` parameter. Per-second ticks verify expiration without re-instantiating or re-painting the inner `Card` subtree unless the expiration state actually toggles.
+   - Result: 0 card rebuilds, 0 list rebuilds, 0 frame drops even with 100+ cards on screen.
+
+3. **Expiration Handling across the App**:
+   - **Flash Rail (`FlashDealsSection`)**: Replaced static `'Ends soon'` label with `FlashCountdownBadge(flashSaleEndsAt: deal.flashSaleEndsAt!, isLight: true)`.
+   - **Deal Details Screen (`DealDetailsScreen`)**: Added `FlashCountdownBanner` for flash deals. The bottom sheet button uses `ValueListenableBuilder` on `CentralTicker` to immediately disable the button and show `'Expired'` when time runs out.
+   - **Deal Details Controller (`DealDetailsController`)**: Added expiration verification in `addToCart()` to prevent adding expired deals if attempted.
+   - **Cart Service (`CartService`)**: Registered a listener on `CentralTicker`. Every second, it checks cart items for expired flash deals, removes any expired items from `items`, recalculates totals, and notifies the user via `Get.snackbar('Item expired', '...')`.
+   - **Timezone Safety (`DealModel`)**: Added `.toLocal()` to `flashSaleEndsAt` in `DealModel.fromJson()` so UTC API timestamps evaluate correctly against device local time. Added `isExpiredAt(DateTime now)` helper.
+
+#### Alternatives Considered & Rejected
+
+- **Per-Widget `Timer.periodic`**: Having each `DealCard` manage its own timer was rejected because 100+ active timers in Dart's event loop cause thread contention, unaligned ticks, and memory leak risks on list scrolling.
+- **Top-Level Reactive Stream / Obx over List**: Wrapping `SliverList` or `DealCard` in GetX `Obx` was rejected because per-second state changes would trigger full card/list rebuilds, causing DevTools frame jank.
+
+#### Edge Cases Handled
+
+- **Timezone Mismatch**: Backend sends UTC ISO strings (`...Z`). Converting via `.toLocal()` in `DealModel.fromJson` avoids negative duration bugs on different timezones.
+- **Multiple Expired Items in Bag**: `CartService` filters all expired items in a single pass and removes them safely without index out-of-bound errors.
+- **Zero Active Listeners**: When all flash sale widgets scroll off-screen, `CentralTicker` pauses its timer automatically to conserve battery.
+
+#### AI Usage
+
+Used AI to assist in designing the `CentralTickerNotifier` listener-counting lifecycle and formatting logic, and to generate comprehensive unit tests in `test/flash_sale_test.dart`.
+
+Approximate timeline ===> 35 mins
+

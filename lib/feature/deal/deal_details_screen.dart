@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../app_config.dart';
+import '../../util/central_ticker.dart';
+import '../shared_widget/flash_countdown_badge.dart';
 import '../shared_widget/the_network_image.dart';
 import 'deal_details_controller.dart';
 
@@ -112,6 +114,12 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
                             )),
                       ],
                     ),
+                    if (deal.isFlashSale) ...[
+                      const SizedBox(height: 16),
+                      FlashCountdownBanner(
+                        flashSaleEndsAt: deal.flashSaleEndsAt!,
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -182,17 +190,36 @@ class DealDetailsScreen extends GetView<DealDetailsController> {
         if (controller.isLoading.value || controller.deal == null) {
           return const SizedBox.shrink();
         }
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          color: Colors.white,
-          child: SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: controller.addToCart,
-              icon: const Icon(Icons.add_shopping_cart),
-              label: const Text('Add to bag'),
-            ),
-          ),
+        final deal = controller.deal!;
+        final quantityLeft = controller.quantityLeft ?? 0;
+
+        return ValueListenableBuilder<DateTime>(
+          valueListenable: CentralTicker.instance.nowNotifier,
+          builder: (context, now, _) {
+            final isExpired = deal.isFlashSale && deal.isExpiredAt(now);
+            final isOutOfStock = quantityLeft <= 0;
+            final disabled = isExpired || isOutOfStock;
+
+            String labelText = 'Add to bag';
+            if (isExpired) {
+              labelText = 'Expired';
+            } else if (isOutOfStock) {
+              labelText = 'Sold out';
+            }
+
+            return Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              color: Colors.white,
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: disabled ? null : controller.addToCart,
+                  icon: const Icon(Icons.add_shopping_cart),
+                  label: Text(labelText),
+                ),
+              ),
+            );
+          },
         );
       }),
     );

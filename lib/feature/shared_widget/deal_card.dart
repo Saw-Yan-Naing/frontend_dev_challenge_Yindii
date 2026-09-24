@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 import '../../app_config.dart';
 import '../../model/deal_model.dart';
 import '../../routes/routes.dart';
+import '../../util/central_ticker.dart';
+import 'flash_countdown_badge.dart';
 import 'the_network_image.dart';
 
 /// Deal card used in the home feed and search results.
@@ -15,7 +17,7 @@ class DealCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final cardContent = Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       clipBehavior: Clip.antiAlias,
       color: Colors.white,
@@ -36,20 +38,8 @@ class DealCard extends StatelessWidget {
                   Positioned(
                     top: 8,
                     left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade600,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'FLASH SALE',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold),
-                      ),
+                    child: FlashCountdownBadge(
+                      flashSaleEndsAt: deal.flashSaleEndsAt!,
                     ),
                   ),
                 Positioned(
@@ -140,6 +130,22 @@ class DealCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    if (!deal.isFlashSale) {
+      return cardContent;
+    }
+
+    return ValueListenableBuilder<DateTime>(
+      valueListenable: CentralTicker.instance.nowNotifier,
+      child: cardContent,
+      builder: (context, now, child) {
+        final isExpired = deal.isExpiredAt(now);
+        return Opacity(
+          opacity: isExpired ? 0.6 : 1.0,
+          child: child!,
+        );
+      },
     );
   }
 }

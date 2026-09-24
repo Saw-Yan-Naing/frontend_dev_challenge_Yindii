@@ -2,17 +2,53 @@ import 'package:get/get.dart';
 
 import '../model/cart_item_model.dart';
 import '../model/deal_model.dart';
+import '../util/central_ticker.dart';
 import '../util/log_service.dart';
 
 /// App-wide cart. Lives for the whole session.
-///
-/// NOTE: the starter cart is purely local — it does not reserve stock on the
-/// backend. See the "Reservations" feature task in PROBLEM.md.
 class CartService extends GetxService {
   final items = <CartItemModel>[].obs;
   final itemCount = 0.obs;
 
+  @override
+  void onInit() {
+    super.onInit();
+    CentralTicker.instance.nowNotifier.addListener(_checkExpiredFlashDeals);
+  }
+
+  @override
+  void onClose() {
+    CentralTicker.instance.nowNotifier.removeListener(_checkExpiredFlashDeals);
+    super.onClose();
+  }
+
+  void _checkExpiredFlashDeals() {
+    if (items.isEmpty) return;
+    final now = DateTime.now();
+    final expiredItems = items
+        .where((i) => i.deal.isFlashSale && i.deal.isExpiredAt(now))
+        .toList();
+
+    if (expiredItems.isEmpty) return;
+
+    for (final expired in expiredItems) {
+      items.remove(expired);
+      Get.snackbar(
+        'Item expired',
+        '${expired.deal.name} was removed from your bag because the flash sale ended.',
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 4),
+      );
+    }
+    _recount();
+  }
+
   void add(DealModel deal) {
+    if (deal.isFlashSale && deal.isExpired) {
+      LogService.log('cart: cannot add expired deal ${deal.id}');
+      return;
+    }
+
     final existing = items.firstWhereOrNull((i) => i.deal.id == deal.id);
     if (existing != null) {
       if (existing.quantity >= deal.quantityLeft) {
